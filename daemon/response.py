@@ -159,7 +159,8 @@ class Response():
             elif sub_type == 'html':
                 base_dir = BASE_DIR+"www/"
             else:
-                handle_text_other(sub_type)
+                # handle_text_other(sub_type)
+                raise ValueError("Invalid text MEME sub_type: {}".format(sub_type))
         elif main_type == 'image':
             base_dir = BASE_DIR+"static/"
             self.headers['Content-Type']='image/{}'.format(sub_type)
@@ -197,10 +198,11 @@ class Response():
         filepath = os.path.join(base_dir, path.lstrip('/'))
 
         print("[Response] serving the object at location {}".format(filepath))
-            #
-            #  TODO: implement the step of fetch the object file
-            #        store in the return value of content
-            #
+        try:
+            with open(filepath, 'rb') as f:
+                content = f.read()
+        except FileNotFoundError:
+            return 404, b"404 Not Found"
         return len(content), content
 
 
@@ -246,8 +248,9 @@ class Response():
         # TODO prepare the request authentication
         #
 	# self.auth = ...
-        return str(fmt_header).encode('utf-8')
-
+        # return str(fmt_header).encode('utf-8')
+        return b"HTTP/1.1 200 OK\r\n"
+    
 
     def build_notfound(self):
         """

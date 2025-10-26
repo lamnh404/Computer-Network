@@ -1,1 +1,9 @@
 /daemon/__pycache__
+.idea
+.vscode
+__pycache__
+.DS_Store
+*.log
+.env
+.env.*
+

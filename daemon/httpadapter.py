@@ -160,13 +160,14 @@ class HttpAdapter:
                 # No route found - 404 Not Found
                 print(f"[HttpAdapter] No hook found for this request")
                 resp.body = """<!DOCTYPE html>
-<html>
-<head><title>404 Not Found</title></head>
-<body>
-    <h1>404 Not Found</h1>
-    <p>The requested URL was not found on this server.</p>
-</body>
-</html>"""
+                                <html>
+                                <head><title>404 Not Found</title></head>
+                                <body>
+                                    <h1>404 Not Found</h1>
+                                    <p>The requested URL was not found on this server.</p>
+                                </body>
+                                </html>
+                                """
                 resp.status_code = 404
                 resp.headers['Content-Type'] = 'text/html'
 

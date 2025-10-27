@@ -19,7 +19,7 @@ request settings (cookies, auth, proxies).
 """
 from .dictionary import CaseInsensitiveDict
 from urllib.parse import parse_qs, urlparse, unquote
-
+from .utils import get_auth_from_url
 class Request():
     """The fully mutable "class" `Request <Request>` object,
     containing the exact bytes that will be sent to the server.
@@ -72,9 +72,12 @@ class Request():
             lines = request.splitlines()
             first_line = lines[0]
             method, path, version = first_line.split()
-
             if path == '/':
-                path = '/index.html'
+                path = '/login.html'
+                # auth_cookie = ??
+                #     path = '/index.html'
+                # else:
+                #     path = '/login.html'
         except Exception:
             return None, None
 
@@ -97,69 +100,48 @@ class Request():
         self.method, self.path, self.version = self.extract_request_line(request)
         print("[Request] {} path {} version {}".format(self.method, self.path, self.version))
 
-        #
-        # @bksysnet Preapring the webapp hook with WeApRous instance
-        # The default behaviour with HTTP server is empty routed
-        #
-        parsed_url = urlparse(self.path)
-        clean_path = parsed_url.path
-        self.query = parse_qs(parsed_url.query)
-        self.hook = None
-        
+        if self.method == 'POST' and self.path == '/login':
+            auth_line = request.splitlines()[-1]
+
         if not routes == {}:
             self.routes = routes
             self.hook = routes.get((self.method, self.path))
-            #
-            # self.hook manipulation goes here
-            # ...
-            #
+            # print("[Request] hook point {}".format(self.hook))
 
         self.headers = self.prepare_headers(request)
         cookies = self.headers.get('cookie', '')
-        self.cookies = CaseInsensitiveDict()
-        if cookies:
-            for cookie_pair in cookies.split(';'):
-                cookie_pair = cookie_pair.strip()
-                if '=' in cookie_pair:
-                    key, value = cookie_pair.split('=', 1)
-                    self.cookies[key.strip()] = value.strip()
+        if cookies is not None:
+            print("[Request] cookies found: {}".format(cookies))
         return
 
     def prepare_body(self, data, files, json=None):
-        body_to_set = None
         if json is not None:
-            import json as json_module
-            body_to_set = json_module.dumps(json)
+            import json as jsonlib
+
+            self.body = jsonlib.dumps(json)
             self.headers["Content-Type"] = "application/json"
-        elif data is not None and not files:
-            from urllib.parse import urlencode
-            body_to_set = urlencode(data)
-            self.headers["Content-Type"] = "application/x-www-form-urlencoded"
-        self.body = body_to_set
-        self.prepare_content_length(self.body)
+
         return
 
 
     def prepare_content_length(self, body):
         if body is not None:
-            length = len(body.encode('utf-8')) if isinstance(body, str) else len(body)
-            self.headers["Content-Length"] = str(length)
-        else:
+            length = body.encode('utf-8') if isinstance(body, str) else len(body)
+            if length:
+                self.headers["Content-Length"] = str(length)
+        elif ( self.method not in ['GET', 'HEAD'] ) and ( "Content-Length" not in self.headers ):
             self.headers["Content-Length"] = "0"
-        return
 
 
     def prepare_auth(self, auth, url=""):
         if auth is None:
-            return
-        self.auth = auth
-        if isinstance(auth, (tuple, list)) and len(auth) == 2:
-            username, password = auth
-            import base64
-            auth_str = f"{username}:{password}"
-            auth_bytes = base64.b64encode(auth_str.encode('utf-8'))
-            auth_header = auth_bytes.decode('utf-8')
-            self.headers["Authorization"] = f"Basic {auth_header}"
+            url_auth = get_auth_from_url(url)
+            print(url_auth)
+            auth = url_auth if url_auth else None
+        if auth:
+            r = auth(self)
+            self.__dict__.update(r.__dict__)
+            self.prepare_content_length(self.body)
         return
 
     def prepare_cookies(self, cookies):

@@ -99,7 +99,6 @@ class HttpAdapter:
 
         msg = conn.recv(1024).decode()
         req.prepare(msg, routes)
-
         if req.hook:
             print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_methods, req.hook._route_path))
             req.hook(headers = "bksysnet",body = "get in touch")
@@ -221,7 +220,7 @@ class HttpAdapter:
         #       username, password =...
         # we provide dummy auth here
         #
-        username, password = ("user1", "password")
+        username, password = ("admin", "password")
 
         if username:
             headers["Proxy-Authorization"] = (username, password)

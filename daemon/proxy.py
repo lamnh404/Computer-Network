@@ -53,7 +53,6 @@ def forward_request(host, port, request):
     :rtype bytes: Raw HTTP response from the backend server. If the connection
                   fails, returns a 404 Not Found response.
     """
-
     backend = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     try:
@@ -158,7 +157,7 @@ def handle_client(ip, port, conn, addr, routes):
 
     if resolved_host:
         print("[Proxy] Host name {} is forwarded to {}:{}".format(hostname,resolved_host, resolved_port))
-        response = forward_request(resolved_host, resolved_port, request)        
+        response = forward_request(resolved_host, resolved_port, request) 
     else:
         response = (
             "HTTP/1.1 404 Not Found\r\n"

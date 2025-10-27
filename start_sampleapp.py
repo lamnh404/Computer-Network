@@ -86,17 +86,19 @@ def login(req):
         # Successful login - return index page with auth cookie
         response_headers = {
             'Content-Type': 'text/html; charset=utf-8',
-            'Set-Cookie': 'auth=true'
+            'Set-Cookie': 'auth=true',
+            'Location': '/'
         }
-        return (200, response_headers, INDEX_PAGE)
+        return (302, response_headers, INDEX_PAGE)
     else:
         print("[SampleApp] ✗ Authentication failed - Invalid credentials")
 
         # Failed login - return 401 Unauthorized page
         response_headers = {
-            'Content-Type': 'text/html; charset=utf-8'
+            'Content-Type': 'text/html; charset=utf-8',
+            'Location': '/'
         }
-        return (401, response_headers, UNAUTHORIZED_PAGE)
+        return (302, response_headers, UNAUTHORIZED_PAGE)
 
 
 @app.route('/hello', methods=['PUT'])
@@ -136,9 +138,10 @@ def index(req):
 
         # Cookie is valid - serve index page
         response_headers = {
-            'Content-Type': 'text/html; charset=utf-8'
+            'Content-Type': 'text/html; charset=utf-8',
+            'Location': '/'
         }
-        return (200, response_headers, render_routes_page(app, base_dir='www'))
+        return ('/', response_headers, render_routes_page(app, base_dir='www'))
     else:
         # Task 1B: No valid cookie - return 401 Unauthorized
         print(f"[SampleApp] ✗ Invalid or missing auth cookie - returning 401")

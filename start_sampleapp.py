@@ -36,7 +36,7 @@ app = WeApRous()
 
 
 # Try to load index.html from file, fallback to hardcoded version
-INDEX_PAGE= load_html_file('www/index.html')
+INDEX_PAGE= render_routes_page(app, 'www')
 
 UNAUTHORIZED_PAGE = load_html_file('www/unauthorized.html')
 
@@ -141,7 +141,7 @@ def index(req):
             'Content-Type': 'text/html; charset=utf-8',
             'Location': '/'
         }
-        return ('/', response_headers, render_routes_page(app, base_dir='www'))
+        return ('/', response_headers, INDEX_PAGE)
     else:
         # Task 1B: No valid cookie - return 401 Unauthorized
         print(f"[SampleApp] ✗ Invalid or missing auth cookie - returning 401")

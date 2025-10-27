@@ -68,7 +68,9 @@ def parse_form_data(body):
         print(f"[SampleApp] Error parsing form data: {e}")
 
     return params
+
 import os
+
 def render_routes_page(app, base_dir):
     routes_html = ""
     for (method, path), func in sorted(app.routes.items()):

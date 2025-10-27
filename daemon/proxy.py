@@ -53,7 +53,6 @@ def forward_request(host, port, request):
     :rtype bytes: Raw HTTP response from the backend server. If the connection
                   fails, returns a 404 Not Found response.
     """
-
     backend = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     try:
@@ -105,7 +104,7 @@ def resolve_routing_policy(hostname, routes):
             # Use a dummy host to raise an invalid connection
             proxy_host = '127.0.0.1'
             proxy_port = '9000'
-        elif len(value) == 1:
+        elif len(proxy_map) == 1:
             proxy_host, proxy_port = proxy_map[0].split(":", 2)
         #elif: # apply the policy handling 
         #   proxy_map
@@ -158,7 +157,7 @@ def handle_client(ip, port, conn, addr, routes):
 
     if resolved_host:
         print("[Proxy] Host name {} is forwarded to {}:{}".format(hostname,resolved_host, resolved_port))
-        response = forward_request(resolved_host, resolved_port, request)        
+        response = forward_request(resolved_host, resolved_port, request) 
     else:
         response = (
             "HTTP/1.1 404 Not Found\r\n"
@@ -194,11 +193,8 @@ def run_proxy(ip, port, routes):
         print("[Proxy] Listening on IP {} port {}".format(ip,port))
         while True:
             conn, addr = proxy.accept()
-            #
-            #  TODO: implement the step of the client incomping connection
-            #        using multi-thread programming with the
-            #        provided handle_client routine
-            #
+            client_thread = threading.Thread(target=handle_client, args=(ip, port, conn, addr, routes))
+            client_thread.start()
     except socket.error as e:
       print("Socket error: {}".format(e))
 

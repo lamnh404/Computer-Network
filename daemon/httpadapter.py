@@ -24,6 +24,7 @@ from .request import Request
 from .response import Response
 from .dictionary import CaseInsensitiveDict
 
+
 class HttpAdapter:
     """
     A mutable :class:`HTTP adapter <HTTP adapter>` for managing client connections
@@ -31,7 +32,7 @@ class HttpAdapter:
 
     The `HttpAdapter` class encapsulates the logic for receiving HTTP requests,
     dispatching them to appropriate route handlers, and constructing responses.
-    It supports RESTful routing via hooks and integrates with :class:`Request <Request>` 
+    It supports RESTful routing via hooks and integrates with :class:`Request <Request>`
     and :class:`Response <Response>` objects for full request lifecycle management.
 
     Attributes:
@@ -92,30 +93,102 @@ class HttpAdapter:
         :param addr (tuple): The client's address.
         :param routes (dict): The route mapping for dispatching requests.
         """
-        self.conn = conn        
+        self.conn = conn
         self.connaddr = addr
         req = self.request
         resp = self.response
 
-        msg = conn.recv(1024).decode()
-        req.prepare(msg, routes)
-        if req.hook:
-            print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_methods, req.hook._route_path))
-            req.hook(headers = "bksysnet",body = "get in touch")
+        try:
+            # Receive and decode the request
+            msg = conn.recv(4096).decode('utf-8')
+            print(f"[HttpAdapter] Received request from {addr}")
+
+            # Prepare the request object
+            req.prepare(msg, routes)
+
+            # Debug: Show what was parsed
+            print(f"[HttpAdapter] Method: {getattr(req, 'method', 'UNKNOWN')}, Path: {getattr(req, 'path', 'UNKNOWN')}")
+
+            if req.hook:
+                print(f"[HttpAdapter] Hook found - METHOD {req.hook._route_methods} PATH {req.hook._route_path}")
+
+                try:
+                    # Call the route handler with the request object
+                    hook_result = req.hook(req)
+
+                    # Handle different return types
+                    if isinstance(hook_result, tuple) and len(hook_result) == 3:
+                        # Handler returned (status_code, headers, body)
+                        status_code, custom_headers, body = hook_result
+                        resp.status_code = status_code
+
+                        # Set body attribute (this tells response.py to use dynamic content)
+                        resp.body = body
+
+                        # Add custom headers if provided
+                        if custom_headers:
+                            for key, value in custom_headers.items():
+                                resp.headers[key] = value
+
+                    elif isinstance(hook_result, dict):
+                        # Handler returned a dictionary (JSON response)
+                        import json
+                        resp.body = json.dumps(hook_result)
+                        resp.status_code = 200
+                        resp.headers['Content-Type'] = 'application/json'
+
+                    elif isinstance(hook_result, str):
+                        # Handler returned a string
+                        resp.body = hook_result
+                        resp.status_code = 200
+                        resp.headers['Content-Type'] = 'text/plain'
+
+                    else:
+                        # Default case
+                        resp.body = str(hook_result) if hook_result else ""
+                        resp.status_code = 200
+
+                except Exception as e:
+                    print(f"[HttpAdapter] Error in hook processing: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    resp.body = "Internal Server Error"
+                    resp.status_code = 500
+                    resp.headers['Content-Type'] = 'text/plain'
+
+            else:
+                # No route found - 404 Not Found
+                print(f"[HttpAdapter] No hook found for this request")
+                resp.body = """<!DOCTYPE html>
+<html>
+<head><title>404 Not Found</title></head>
+<body>
+    <h1>404 Not Found</h1>
+    <p>The requested URL was not found on this server.</p>
+</body>
+</html>"""
+                resp.status_code = 404
+                resp.headers['Content-Type'] = 'text/html'
+
+            # Build and send the response using Response.build_response()
+            # The body attribute tells it to use dynamic content instead of files
+            response = resp.build_response(req)
+            conn.sendall(response)
+
+        except Exception as e:
+            print(f"[HttpAdapter] Error handling client: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Send a basic error response
+            error_response = b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nInternal Server Error"
             try:
-                hook_result_body = req.hook(req)
-                resp.body = hook_result_body
-                resp.status_code = 200
-            
-            except Exception as e:
-                print("[HttpAdapter] Error in hook processing: {}".format(e))
-                resp.body = "Internal Server Error"
-                resp.status_code = 500
+                conn.sendall(error_response)
+            except:
+                pass
 
-        response = resp.build_response(req)
-
-        conn.sendall(response)
-        conn.close()
+        finally:
+            conn.close()
 
     @property
     def extract_cookies(self, req, resp):
@@ -137,7 +210,7 @@ class HttpAdapter:
         return cookies
 
     def build_response(self, req, resp):
-        """Builds a :class:`Response <Response>` object 
+        """Builds a :class:`Response <Response>` object
 
         :param req: The :class:`Request <Request>` used to generate the response.
         :param resp: The  response object.
@@ -164,35 +237,6 @@ class HttpAdapter:
 
         return response
 
-    # def get_connection(self, url, proxies=None):
-        # """Returns a url connection for the given URL. 
-
-        # :param url: The URL to connect to.
-        # :param proxies: (optional) A Requests-style dictionary of proxies used on this request.
-        # :rtype: int
-        # """
-
-        # proxy = select_proxy(url, proxies)
-
-        # if proxy:
-            # proxy = prepend_scheme_if_needed(proxy, "http")
-            # proxy_url = parse_url(proxy)
-            # if not proxy_url.host:
-                # raise InvalidProxyURL(
-                    # "Please check proxy URL. It is malformed "
-                    # "and could be missing the host."
-                # )
-            # proxy_manager = self.proxy_manager_for(proxy)
-            # conn = proxy_manager.connection_from_url(url)
-        # else:
-            # # Only scheme should be lower case
-            # parsed = urlparse(url)
-            # url = parsed.geturl()
-            # conn = self.poolmanager.connection_from_url(url)
-
-        # return conn
-
-
     def add_headers(self, request):
         """
         Add headers to the request.
@@ -200,7 +244,7 @@ class HttpAdapter:
         This method is intended to be overridden by subclasses to inject
         custom headers. It does nothing by default.
 
-        
+
         :param request: :class:`Request <Request>` to add headers to.
         """
         pass

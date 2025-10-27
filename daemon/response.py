@@ -27,6 +27,7 @@ class Response():
         self.cookies = {}
         self.elapsed = datetime.timedelta(0)
         self.request = None
+        self.body = None  # Add body attribute for dynamic content
 
     def get_mime_type(self, path):
         """
@@ -79,21 +80,45 @@ class Response():
                 content = f.read()
         except FileNotFoundError:
             return 404, b"404 Not Found"
+        except PermissionError:
+            print("[Response] Permission denied accessing {}".format(filepath))
+            return 403, b"403 Forbidden"
         return len(content), content
 
     def build_response_header(self, request):
         """
         Constructs the HTTP response headers.
         """
-        reqhdr = request.headers
+        reqhdr = request.headers if hasattr(request, 'headers') else {}
         rsphdr = self.headers
 
         # Determine status code and reason
         status_code = self.status_code or 200
-        reason = self.reason or "OK"
+
+        # Map status codes to reasons
+        status_reasons = {
+            200: "OK",
+            201: "Created",
+            204: "No Content",
+            301: "Moved Permanently",
+            302: "Found",
+            304: "Not Modified",
+            400: "Bad Request",
+            401: "Unauthorized",
+            403: "Forbidden",
+            404: "Not Found",
+            500: "Internal Server Error",
+            502: "Bad Gateway",
+            503: "Service Unavailable"
+        }
+        reason = status_reasons.get(status_code, "Unknown")
 
         # Build status line
         status_line = "HTTP/1.1 {} {}\r\n".format(status_code, reason)
+
+        # Ensure _content is bytes
+        if isinstance(self._content, str):
+            self._content = self._content.encode('utf-8')
 
         # Build dynamic headers
         headers = {
@@ -105,6 +130,11 @@ class Response():
             "Content-Length": str(len(self._content)),
             "Connection": "close",
         }
+
+        # Merge any additional headers from self.headers
+        for key, value in rsphdr.items():
+            if key not in headers:
+                headers[key] = value
 
         # Build formatted header text
         header_text = status_line
@@ -132,21 +162,47 @@ class Response():
     def build_response(self, request):
         """
         Builds a full HTTP response including headers and content.
+
+        This method now supports BOTH dynamic content (from route handlers)
+        and file-based content (static files).
         """
+        # Check if we have dynamic content already set (from route handler)
+        if self.body is not None:
+            print("[Response] Building dynamic response (from route handler)")
+
+            # Ensure body is bytes
+            if isinstance(self.body, str):
+                self._content = self.body.encode('utf-8')
+            else:
+                self._content = self.body
+
+            # Status code should already be set by handler
+            if self.status_code is None:
+                self.status_code = 200
+
+            # Build and return response
+            self._header = self.build_response_header(request)
+            return self._header + self._content
+
+        # Otherwise, fall back to file-based serving (original behavior)
         path = request.path
-        print("[Response] Building response for path: {}".format(path))
+        print("[Response] Building file-based response for path: {}".format(path))
         mime_type = self.get_mime_type(path)
         print("[Response] {} path {} mime_type {}".format(request.method, request.path, mime_type))
 
         base_dir = ""
         # Determine base directory based on file type
-        if path.endswith('.html') or mime_type == 'text/html':
-            base_dir = self.prepare_content_type(mime_type='text/html')
-        elif mime_type == 'text/css':
-            base_dir = self.prepare_content_type(mime_type='text/css')
-        elif mime_type.startswith('image/') or mime_type.startswith('application/'):
-            base_dir = self.prepare_content_type(mime_type=mime_type)
-        else:
+        try:
+            if path.endswith('.html') or mime_type == 'text/html':
+                base_dir = self.prepare_content_type(mime_type='text/html')
+            elif mime_type == 'text/css':
+                base_dir = self.prepare_content_type(mime_type='text/css')
+            elif mime_type.startswith('image/') or mime_type.startswith('application/'):
+                base_dir = self.prepare_content_type(mime_type=mime_type)
+            else:
+                return self.build_notfound()
+        except (ValueError, PermissionError) as e:
+            print("[Response] Error preparing content type: {}".format(e))
             return self.build_notfound()
 
         c_len, self._content = self.build_content(path, base_dir)
@@ -154,6 +210,15 @@ class Response():
         # Check if file was found
         if c_len == 404:
             return self.build_notfound()
+        elif c_len == 403:
+            return (
+                "HTTP/1.1 403 Forbidden\r\n"
+                "Content-Type: text/html\r\n"
+                "Content-Length: 13\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+                "403 Forbidden"
+            ).encode('utf-8')
 
         # Set status code for successful response
         self.status_code = 200

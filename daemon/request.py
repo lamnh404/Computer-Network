@@ -20,6 +20,8 @@ request settings (cookies, auth, proxies).
 from .dictionary import CaseInsensitiveDict
 from urllib.parse import parse_qs, urlparse, unquote
 from .utils import get_auth_from_url
+
+
 class Request():
     """The fully mutable "class" `Request <Request>` object,
     containing the exact bytes that will be sent to the server.
@@ -30,7 +32,7 @@ class Request():
 
     Usage::
 
-      >>> import deamon.request
+      >>> import daemon.request
       >>> req = request.Request()
       ## Incoming message obtain aka. incoming_msg
       >>> r = req.prepare(incoming_msg)
@@ -44,9 +46,10 @@ class Request():
         "body",
         "reason",
         "cookies",
-        "body",
         "routes",
         "hook",
+        "path",
+        "version",
     ]
 
     def __init__(self):
@@ -57,7 +60,9 @@ class Request():
         #: dictionary of HTTP headers.
         self.headers = None
         #: HTTP path
-        self.path = None        
+        self.path = None
+        #: HTTP version
+        self.version = None
         # The cookies set used to create Cookie header
         self.cookies = None
         #: request body to send to the server.
@@ -68,23 +73,39 @@ class Request():
         self.hook = None
 
     def extract_request_line(self, request):
+        """
+        Extract the HTTP method, path, and version from the request line.
+
+        :param request: Raw HTTP request string
+        :return: Tuple of (method, path, version)
+        """
         try:
             lines = request.splitlines()
-            first_line = lines[0]
-            method, path, version = first_line.split()
-            if path == '/':
-                path = '/login.html'
-                # auth_cookie = ??
-                #     path = '/index.html'
-                # else:
-                #     path = '/login.html'
-        except Exception:
-            return None, None
+            if not lines:
+                return None, None, None
 
-        return method, path, version
-             
+            first_line = lines[0]
+            parts = first_line.split()
+
+            if len(parts) != 3:
+                return None, None, None
+
+            method, path, version = parts
+
+            # Don't modify the path - let the router handle it
+            return method, path, version
+
+        except Exception as e:
+            print(f"[Request] Error parsing request line: {e}")
+            return None, None, None
+
     def prepare_headers(self, request):
-        """Prepares the given HTTP headers."""
+        """
+        Prepares the given HTTP headers.
+
+        :param request: Raw HTTP request string
+        :return: Dictionary of headers
+        """
         lines = request.split('\r\n')
         headers = {}
         for line in lines[1:]:
@@ -93,47 +114,110 @@ class Request():
                 headers[key.lower()] = val
         return headers
 
-    def prepare(self, request, routes=None):
-        """Prepares the entire request with the given parameters."""
+    def prepare_body(self, request):
+        """
+        Extract the body from the HTTP request.
 
+        :param request: Raw HTTP request string
+        :return: Request body as string
+        """
+        try:
+            # Split request into headers and body
+            parts = request.split('\r\n\r\n', 1)
+            if len(parts) == 2:
+                body = parts[1]
+                return body
+            return ""
+        except Exception as e:
+            print(f"[Request] Error extracting body: {e}")
+            return ""
+
+    def prepare(self, request, routes=None):
+        """
+        Prepares the entire request with the given parameters.
+
+        :param request: Raw HTTP request string
+        :param routes: Dictionary of registered routes
+        """
         # Prepare the request line from the request header
         self.method, self.path, self.version = self.extract_request_line(request)
-        print("[Request] {} path {} version {}".format(self.method, self.path, self.version))
 
-        if self.method == 'POST' and self.path == '/login':
-            auth_line = request.splitlines()[-1]
+        if not self.method or not self.path:
+            print("[Request] Failed to parse request line")
+            return
 
-        if not routes == {}:
-            self.routes = routes
-            self.hook = routes.get((self.method, self.path))
-            # print("[Request] hook point {}".format(self.hook))
+        print(f"[Request] {self.method} path {self.path} version {self.version}")
 
+        # Prepare headers
         self.headers = self.prepare_headers(request)
+
+        # Extract body for POST/PUT requests
+        if self.method in ['POST', 'PUT', 'PATCH']:
+            self.body = self.prepare_body(request)
+            print(f"[Request] Body extracted ({len(self.body)} bytes): {self.body[:100]}")
+        else:
+            self.body = ""
+
+        # Extract cookies
         cookies = self.headers.get('cookie', '')
-        if cookies is not None:
-            print("[Request] cookies found: {}".format(cookies))
-        return
+        if cookies:
+            print(f"[Request] Cookies found: {cookies}")
+            self.cookies = self.parse_cookies(cookies)
+        else:
+            self.cookies = {}
 
-    def prepare_body(self, data, files, json=None):
-        if json is not None:
-            import json as jsonlib
+        # Set up routing
+        if routes and routes != {}:
+            self.routes = routes
+            route_key = (self.method, self.path)
+            self.hook = routes.get(route_key)
 
-            self.body = jsonlib.dumps(json)
-            self.headers["Content-Type"] = "application/json"
 
-        return
+            if self.hook:
+                print(f"[Request] Route matched: {route_key} -> {self.hook.__name__}")
+            else:
+                print(f"[Request] No route found for: {route_key}")
+                print(f"[Request] Available routes: {list(routes.keys())}")
 
+    def parse_cookies(self, cookie_string):
+        """
+        Parse cookie string into a dictionary.
+
+        :param cookie_string: Cookie header value
+        :return: Dictionary of cookie key-value pairs
+        """
+        cookies = {}
+        if not cookie_string:
+            return cookies
+
+        for pair in cookie_string.split(';'):
+            pair = pair.strip()
+            if '=' in pair:
+                key, value = pair.split('=', 1)
+                cookies[key.strip()] = value.strip()
+
+        return cookies
 
     def prepare_content_length(self, body):
+        """
+        Set the Content-Length header based on body size.
+
+        :param body: Request body
+        """
         if body is not None:
-            length = body.encode('utf-8') if isinstance(body, str) else len(body)
+            length = len(body.encode('utf-8')) if isinstance(body, str) else len(body)
             if length:
                 self.headers["Content-Length"] = str(length)
-        elif ( self.method not in ['GET', 'HEAD'] ) and ( "Content-Length" not in self.headers ):
+        elif (self.method not in ['GET', 'HEAD']) and ("Content-Length" not in self.headers):
             self.headers["Content-Length"] = "0"
 
-
     def prepare_auth(self, auth, url=""):
+        """
+        Prepare authentication for the request.
+
+        :param auth: Authentication handler
+        :param url: URL for authentication
+        """
         if auth is None:
             url_auth = get_auth_from_url(url)
             print(url_auth)
@@ -142,7 +226,11 @@ class Request():
             r = auth(self)
             self.__dict__.update(r.__dict__)
             self.prepare_content_length(self.body)
-        return
 
-    def prepare_cookies(self, cookies):
-            self.headers["Cookie"] = cookies
+    def prepare_cookies_header(self, cookies):
+        """
+        Prepare the Cookie header from cookies dictionary.
+
+        :param cookies: Dictionary of cookies
+        """
+        self.headers["Cookie"] = cookies

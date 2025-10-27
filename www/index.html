@@ -1,20 +1,26 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
-    <title>bksysnet@hcmut welcome</title>
-
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="css/styles.css" />
+    <title>WeApRous Server</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        h1 { color: #007bff; }
+        ul { background: #f5f5f5; padding: 20px; border-radius: 5px; }
+        li { margin: 10px 0; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
 </head>
-
 <body>
-<div>
-    <h1>bksysnet@hcmut  Domain</h1>
-    <p>This domain is for use in illustrative examples in documents.
-    </p>
-    <img src="images/welcome.png" alt="bksysnet at HCMUT" width="500" height="600">
-</div>
+    <h1>WeApRous Server - Running</h1>
+    <h2>Available Routes:</h2>
+    <ul>
+        {{routes}}
+    </ul>
+    <h2>Quick Links:</h2>
+    <ul>
+        <li><a href="/login">Login Page</a></li>
+        <li><a href="/status">Status Check</a></li>
+    </ul>
 </body>
 </html>

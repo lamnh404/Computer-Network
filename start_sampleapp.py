@@ -24,6 +24,7 @@ import socket
 import argparse
 
 from daemon.weaprous import WeApRous
+from daemon.utils import load_html_file, parse_form_data, render_routes_page
 
 PORT = 9000  # Default port
 
@@ -33,237 +34,13 @@ VALID_PASSWORD = "password"
 app = WeApRous()
 
 
-# Helper function to load HTML files
-def load_html_file(filepath):
-    """
-    Load HTML content from a file.
-
-    :param filepath: Path to the HTML file
-    :return: HTML content as string
-    """
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        print(f"[SampleApp] Warning: {filepath} not found, using default HTML")
-        return None
-    except Exception as e:
-        print(f"[SampleApp] Error loading {filepath}: {e}")
-        return None
-
 
 # Try to load index.html from file, fallback to hardcoded version
-INDEX_PAGE_FILE = load_html_file('www/index.html')
-if INDEX_PAGE_FILE:
-    INDEX_PAGE = INDEX_PAGE_FILE
-    print("[SampleApp] Loaded index page from www/index.html")
-else:
-    # Fallback to hardcoded HTML if file doesn't exist
-    INDEX_PAGE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome - Authenticated</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 { color: #28a745; }
-        .info { 
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            padding: 15px;
-            border-radius: 4px;
-            margin-top: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>✓ Login Successful</h1>
-        <p>Welcome! You have successfully authenticated.</p>
-        <div class="info">
-            <strong>Authentication Status:</strong> Logged in<br>
-            <strong>Session:</strong> Active
-        </div>
-    </div>
-</body>
-</html>
-"""
-    print("[SampleApp] Using fallback index page HTML")
+INDEX_PAGE= load_html_file('www/index.html')
 
-UNAUTHORIZED_PAGE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>401 Unauthorized</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 { color: #dc3545; }
-        .error { 
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            padding: 15px;
-            border-radius: 4px;
-            margin-top: 20px;
-        }
-        a {
-            color: #007bff;
-            text-decoration: none;
-        }
-        a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>401 Unauthorized</h1>
-        <p>Invalid username or password. Access denied.</p>
-        <div class="error">
-            <strong>Error:</strong> Authentication failed<br>
-            <strong>Reason:</strong> Invalid credentials provided
-        </div>
-        <p style="margin-top: 20px;">
-            <a href="/login">← Back to login</a>
-        </p>
-    </div>
-</body>
-</html>
-"""
+UNAUTHORIZED_PAGE = load_html_file('www/unauthorized.html')
 
-LOGIN_FORM_PAGE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 400px;
-            margin: 50px auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 { text-align: center; color: #333; }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #555;
-        }
-        input[type="text"],
-        input[type="password"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-size: 14px;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .hint {
-            font-size: 12px;
-            color: #666;
-            margin-top: 15px;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Login</h1>
-        <form method="POST" action="/login">
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">Login</button>
-        </form>
-        <div class="hint">
-            <strong>Hint:</strong> username=admin, password=password
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-
-def parse_form_data(body):
-    """
-    Parse URL-encoded form data from request body.
-
-    :param body: The request body containing form data
-    :type body: str
-    :return: Dictionary of form fields
-    :rtype: dict
-    """
-    if not body:
-        return {}
-
-    params = {}
-    try:
-        for pair in body.split('&'):
-            if '=' in pair:
-                key, value = pair.split('=', 1)
-                # Basic URL decoding for common cases
-                value = value.replace('+', ' ')
-                params[key] = value
-    except Exception as e:
-        print(f"[SampleApp] Error parsing form data: {e}")
-
-    return params
+LOGIN_FORM_PAGE = load_html_file('www/login.html')
 
 
 @app.route('/login', methods=['GET'])
@@ -285,11 +62,6 @@ def login_form(req):
 def login(req):
     """
     Handle user login via POST request with authentication validation.
-
-    Task 1A Implementation:
-    - Validates submitted credentials (username=admin, password=password)
-    - Returns index page with Set-Cookie: auth=true if valid
-    - Returns 401 Unauthorized page if invalid
 
     :param req: The Request object containing headers and body
     :return: HTTP response tuple (status_code, headers_dict, html_content)
@@ -327,15 +99,7 @@ def login(req):
         return (401, response_headers, UNAUTHORIZED_PAGE)
 
 
-@app.route('/test', methods=['GET'])
-def test(headers=None, body=None):
-    """
-    Simple test endpoint to verify routing works.
-    Returns plain string instead of tuple.
-    """
-    return "TEST ENDPOINT WORKING"
-
-
+@app.route('/hello', methods=['PUT'])
 def hello(headers, body):
     """
     Handle greeting via PUT request.
@@ -353,18 +117,6 @@ def hello(headers, body):
     print(f"[SampleApp] ['PUT'] Hello in {headers} to {body}")
     return {"message": "Hello received", "headers": headers, "body": body}
 
-
-@app.route('/status', methods=['GET'])
-def status(headers=None, body=None):
-    """
-    Simple health check endpoint.
-
-    :return: Server status information
-    :rtype: dict
-    """
-    return {"status": "running", "message": "Server is healthy"}
-
-
 @app.route('/', methods=['GET'])
 def index(headers=None, body=None):
     """
@@ -373,36 +125,7 @@ def index(headers=None, body=None):
     :return: HTML page with route listing
     :rtype: tuple
     """
-    routes_html = ""
-    for (method, path), func in sorted(app.routes.items()):
-        routes_html += f"<li><strong>{method}</strong> {path} → {func.__name__}()</li>\n"
-
-    page = f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>WeApRous Server</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }}
-        h1 {{ color: #007bff; }}
-        ul {{ background: #f5f5f5; padding: 20px; border-radius: 5px; }}
-        li {{ margin: 10px 0; }}
-        a {{ color: #007bff; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-    </style>
-</head>
-<body>
-    <h1>WeApRous Server - Running</h1>
-    <h2>Available Routes:</h2>
-    <ul>
-        {routes_html}
-    </ul>
-    <h2>Quick Links:</h2>
-    <ul>
-        <li><a href="/login">Login Page</a></li>
-        <li><a href="/status">Status Check</a></li>
-    </ul>
-</body>
-</html>"""
+    page = render_routes_page(app, base_dir='www/index.html')
 
     response_headers = {
         'Content-Type': 'text/html; charset=utf-8'

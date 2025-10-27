@@ -30,11 +30,11 @@ import argparse
 
 from daemon.weaprous import WeApRous
 
-PORT = 8000  # Default port
+PORT = 9000  # Default port
 
 app = WeApRous()
 
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['GET'])
 def login(headers="guest", body="anonymous"):
     """
     Handle user login via POST request.
@@ -46,6 +46,7 @@ def login(headers="guest", body="anonymous"):
     :param body (str): The request body or login payload.
     """
     print("[SampleApp] Logging in {} to {}".format(headers, body))
+    return {"message": "GET /login route working properly"}
 
 @app.route('/hello', methods=['PUT'])
 def hello(headers, body):

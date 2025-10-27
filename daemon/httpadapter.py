@@ -92,32 +92,29 @@ class HttpAdapter:
         :param addr (tuple): The client's address.
         :param routes (dict): The route mapping for dispatching requests.
         """
-
-        # Connection handler.
         self.conn = conn        
-        # Connection address.
         self.connaddr = addr
-        # Request handler
         req = self.request
-        # Response handler
         resp = self.response
 
-        # Handle the request
         msg = conn.recv(1024).decode()
         req.prepare(msg, routes)
 
-        # Handle request hook
         if req.hook:
             print("[HttpAdapter] hook in route-path METHOD {} PATH {}".format(req.hook._route_path,req.hook._route_methods))
             req.hook(headers = "bksysnet",body = "get in touch")
-            #
-            # TODO: handle for App hook here
-            #
+            try:
+                hook_result_body = req.hook(req)
+                resp.body = hook_result_body
+                resp.status_code = 200
+            
+            except Exception as e:
+                print("[HttpAdapter] Error in hook processing: {}".format(e))
+                resp.body = "Internal Server Error"
+                resp.status_code = 500
 
-        # Build response
         response = resp.build_response(req)
 
-        #print(response)
         conn.sendall(response)
         conn.close()
 

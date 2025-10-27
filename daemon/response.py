@@ -134,17 +134,17 @@ class Response():
         Builds a full HTTP response including headers and content.
         """
         path = request.path
-
         mime_type = self.get_mime_type(path)
         print("[Response] {} path {} mime_type {}".format(request.method, request.path, mime_type))
 
         base_dir = ""
-
         # Determine base directory based on file type
         if path.endswith('.html') or mime_type == 'text/html':
             base_dir = self.prepare_content_type(mime_type='text/html')
         elif mime_type == 'text/css':
             base_dir = self.prepare_content_type(mime_type='text/css')
+        elif mime_type.startswith('image/'):
+            base_dir = self.prepare_content_type(mime_type=mime_type)
         else:
             return self.build_notfound()
 

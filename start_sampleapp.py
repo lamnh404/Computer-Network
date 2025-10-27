@@ -118,19 +118,35 @@ def hello(headers, body):
     return {"message": "Hello received", "headers": headers, "body": body}
 
 @app.route('/', methods=['GET'])
-def index(headers=None, body=None):
+def index(req):
     """
     Root endpoint - shows available routes.
 
     :return: HTML page with route listing
     :rtype: tuple
     """
-    page = render_routes_page(app, base_dir='www/index.html')
+    cookies = req.cookies if hasattr(req, 'cookies') else {}
+    auth_cookie = cookies.get('auth', '')
 
-    response_headers = {
-        'Content-Type': 'text/html; charset=utf-8'
-    }
-    return (200, response_headers, page)
+    print(f"[SampleApp] GET / - Checking authentication cookie: auth={auth_cookie}")
+
+    # Validate cookie
+    if auth_cookie == 'true':
+        print("[SampleApp] ✓ Valid auth cookie - serving index page")
+
+        # Cookie is valid - serve index page
+        response_headers = {
+            'Content-Type': 'text/html; charset=utf-8'
+        }
+        return (200, response_headers, render_routes_page(app, base_dir='www'))
+    else:
+        # Task 1B: No valid cookie - return 401 Unauthorized
+        print(f"[SampleApp] ✗ Invalid or missing auth cookie - returning 401")
+
+        response_headers = {
+            'Content-Type': 'text/html; charset=utf-8'
+        }
+        return (401, response_headers, UNAUTHORIZED_PAGE)
 
 
 if __name__ == "__main__":

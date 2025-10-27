@@ -68,13 +68,15 @@ def parse_form_data(body):
         print(f"[SampleApp] Error parsing form data: {e}")
 
     return params
-
+import os
 def render_routes_page(app, base_dir):
     routes_html = ""
     for (method, path), func in sorted(app.routes.items()):
         routes_html += f"<li><strong>{method}</strong> {path} → {func.__name__}()</li>\n"
 
-    with open(base_dir, "r", encoding="utf-8") as f:
+    path= os.path.join(base_dir, 'index.html')
+
+    with open(path, "r", encoding="utf-8") as f:
         html = f.read()
 
     html = html.replace("{{routes}}", routes_html)

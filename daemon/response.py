@@ -170,6 +170,7 @@ class Response():
         if self.body is not None:
             print("[Response] Building dynamic response (from route handler)")
 
+
             # Ensure body is bytes
             if isinstance(self.body, str):
                 self._content = self.body.encode('utf-8')
@@ -182,6 +183,8 @@ class Response():
 
             # Build and return response
             self._header = self.build_response_header(request)
+
+
             return self._header + self._content
 
         # Otherwise, fall back to file-based serving (original behavior)
@@ -225,5 +228,6 @@ class Response():
         self.reason = "OK"
 
         self._header = self.build_response_header(request)
+
 
         return self._header + self._content

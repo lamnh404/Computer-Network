@@ -26,6 +26,7 @@ from daemon.weaprous import WeApRous
 from daemon.utils import load_html_file, parse_form_data
 
 import db.P2p_chat_db as db
+from p2p import Node
 
 
 
@@ -45,6 +46,37 @@ active_peers = {}  # {peer_id: {'ip': ..., 'port': ..., 'last_seen': ...}}
 # Message storage per channel
 messages_lock = threading.Lock()
 channel_messages = {'general': []}  # {channel_name: [messages]}
+
+# P2P nodes per (username, channel)
+p2p_nodes_lock = threading.Lock()
+p2p_nodes = {}  # { (username, channel): Node }
+
+# P2P connection requests and active DMs
+p2p_pending_lock = threading.Lock()
+p2p_pending = {}  # { to_username: set(from_username) }
+
+p2p_dm_lock = threading.Lock()
+p2p_active_dm = set()  # set of canonical keys e.g., ('alice|bob')
+
+
+def dm_key(u1: str, u2: str) -> str:
+    a, b = sorted([u1, u2])
+    return f"dm:{a}|{b}"
+
+
+def _get_node_for_user(username: str, preferred_channel: str = None):
+    """Pick an existing P2P node for a user.
+    Prefer the provided channel if found; otherwise return any node for that user.
+    """
+    with p2p_nodes_lock:
+        if preferred_channel is not None:
+            node = p2p_nodes.get((username, preferred_channel))
+            if node:
+                return node
+        for (u, ch), node in p2p_nodes.items():
+            if u == username:
+                return node
+    return None
 
 # Try to load P2P_chat.html from file
 
@@ -75,6 +107,49 @@ def get_local_ip():
 def generate_peer_id():
     """Generate random peer ID"""
     return 'peer_' + ''.join(random.choices(string.ascii_lowercase + string.digits, k=9))
+
+
+def _p2p_on_message_factory(self_username: str):
+    def _cb(channel: str, username: str, text: str):
+        try:
+            # Only sender saves to DB to avoid duplicates when sharing one DB
+            # Direct messages are handled separately by _p2p_on_direct
+            if channel.startswith('dm:'):
+                return
+            if username != self_username:
+                return
+            db.save_message(username, text, channel)
+        except Exception as e:
+            print(f"[P2P] on_message error: {e}")
+    return _cb
+
+
+def _p2p_on_control_factory(self_username: str):
+    def _cb(from_user: str, ctrl: str, data: dict):
+        try:
+            if ctrl == 'connect_request':
+                with p2p_pending_lock:
+                    s = p2p_pending.get(self_username)
+                    if s is None:
+                        s = set()
+                        p2p_pending[self_username] = s
+                    s.add(from_user)
+                print(f"[P2P] Connect request from {from_user} -> {self_username}")
+            elif ctrl == 'connect_accept':
+                with p2p_dm_lock:
+                    p2p_active_dm.add('|'.join(sorted([self_username, from_user])))
+                print(f"[P2P] Connect accepted between {from_user} and {self_username}")
+        except Exception as e:
+            print(f"[P2P] on_control error: {e}")
+    return _cb
+
+
+def _p2p_on_direct(user_from: str, user_to: str, text: str):
+    try:
+        channel = dm_key(user_from, user_to)
+        db.save_message(user_from, text, channel)
+    except Exception as e:
+        print(f"[P2P] on_direct error: {e}")
 
 
 @app.route('/login', methods=['GET'])
@@ -191,6 +266,220 @@ def get_messages(req):
         return 401, response_headers, UNAUTHORIZED_PAGE
 
     return 200, response_headers, P2P_CHAT__PAGE
+
+
+# ---------------- P2P Control Endpoints ----------------
+
+@app.route('/p2p/start', methods=['POST'])
+def p2p_start(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        if not body:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({
+                'status': 'error', 'message': 'Missing body'
+            })
+        data = json.loads(body)
+        username = data.get('username')
+        channel = data.get('channel', 'general')
+        host = data.get('host', '0.0.0.0')
+        port = int(data.get('port', 0))
+        if not username:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({
+                'status': 'error', 'message': 'Missing username'
+            })
+        key = (username, channel)
+        with p2p_nodes_lock:
+            node = p2p_nodes.get(key)
+            if node is None:
+                node = Node(
+                    username=username,
+                    channel=channel,
+                    listen_host=host,
+                    listen_port=port,
+                    on_message=_p2p_on_message_factory(username),
+                    on_control=_p2p_on_control_factory(username),
+                    on_direct=_p2p_on_direct,
+                )
+                node.start()
+                p2p_nodes[key] = node
+            status = node.status()
+        return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success', 'node': status})
+    except Exception as e:
+        print(f"[P2P] start error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/stop', methods=['POST'])
+def p2p_stop(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body) if body else {}
+        username = data.get('username')
+        channel = data.get('channel', 'general')
+        if not username:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing username'})
+        key = (username, channel)
+        with p2p_nodes_lock:
+            node = p2p_nodes.pop(key, None)
+        if node:
+            try:
+                node.stop()
+            except Exception:
+                pass
+        return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success'})
+    except Exception as e:
+        print(f"[P2P] stop error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/status', methods=['POST'])
+def p2p_status(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body) if body else {}
+        username = data.get('username')
+        channel = data.get('channel', 'general')
+        if not username:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing username'})
+        key = (username, channel)
+        with p2p_nodes_lock:
+            node = p2p_nodes.get(key)
+            status = node.status() if node else None
+        return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success', 'node': status})
+    except Exception as e:
+        print(f"[P2P] status error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/send', methods=['POST'])
+def p2p_send(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        if not body:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing body'})
+        data = json.loads(body)
+        username = data.get('username')
+        channel = data.get('channel', 'general')
+        message = data.get('message')
+        if not username or message is None:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing username or message'})
+        key = (username, channel)
+        with p2p_nodes_lock:
+            node = p2p_nodes.get(key)
+        if not node:
+            return 404, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'P2P node not running'})
+        node.send(message)
+        return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success'})
+    except Exception as e:
+        print(f"[P2P] send error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/request', methods=['POST'])
+def p2p_request(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body) if body else {}
+        username = data.get('username')
+        target = data.get('target')
+        channel = data.get('channel', 'general')
+        if not username or not target:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing username or target'})
+        node = _get_node_for_user(username, preferred_channel=channel)
+        if not node:
+            return 404, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'P2P node not running'})
+        ok = node.send_control(target, 'connect_request', {'channel': channel})
+        if not ok:
+            return 503, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Target not reachable'})
+        return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success'})
+    except Exception as e:
+        print(f"[P2P] request error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/pending', methods=['POST'])
+def p2p_pending_inbox(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body) if body else {}
+        username = data.get('username')
+        if not username:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing username'})
+        with p2p_pending_lock:
+            s = list(p2p_pending.get(username, set()))
+        return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success', 'requests': s})
+    except Exception as e:
+        print(f"[P2P] pending error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/accept', methods=['POST'])
+def p2p_accept(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body) if body else {}
+        username = data.get('username')  # accepter
+        requester = data.get('requester')
+        channel = data.get('channel', 'general')
+        if not username or not requester:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing username or requester'})
+        node = _get_node_for_user(username, preferred_channel=channel)
+        if not node:
+            return 404, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'P2P node not running'})
+        ok = node.send_control(requester, 'connect_accept', {'channel': channel})
+        with p2p_pending_lock:
+            s = p2p_pending.get(username)
+            if s and requester in s:
+                s.remove(requester)
+        if ok:
+            with p2p_dm_lock:
+                p2p_active_dm.add('|'.join(sorted([username, requester])))
+            return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success'})
+        return 503, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Target not reachable'})
+    except Exception as e:
+        print(f"[P2P] accept error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/dm-status', methods=['POST'])
+def p2p_dm_status(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body) if body else {}
+        username = data.get('username')
+        peer = data.get('peer')
+        if not username or not peer:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing username or peer'})
+        key = '|'.join(sorted([username, peer]))
+        with p2p_dm_lock:
+            active = key in p2p_active_dm
+        return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success', 'active': active})
+    except Exception as e:
+        print(f"[P2P] dm-status error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
+
+
+@app.route('/p2p/send-direct', methods=['POST'])
+def p2p_send_direct(req):
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body) if body else {}
+        username = data.get('username')
+        peer = data.get('peer')
+        channel = data.get('channel', 'general')
+        message = data.get('message')
+        if not username or not peer or message is None:
+            return 400, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Missing fields'})
+        node = _get_node_for_user(username, preferred_channel=channel)
+        if not node:
+            return 404, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'P2P node not running'})
+        ok = node.send_direct(peer, message)
+        if ok:
+            return 200, {'Content-Type': 'application/json'}, json.dumps({'status': 'success'})
+        return 503, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Peer not reachable'})
+    except Exception as e:
+        print(f"[P2P] send-direct error: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({'status': 'error', 'message': 'Internal server error'})
 
 @app.route('/chat/register', methods=['POST'])
 def chat_register(req):

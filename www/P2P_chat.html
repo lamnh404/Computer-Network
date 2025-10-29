@@ -436,6 +436,9 @@
         let userChannels = [];
         let messagePollingInterval = null;
         let usersPollingInterval = null;
+        let p2pEnabled = false;
+        let pendingRequests = [];
+        let dmPartners = [];
 
         function getUsernameFromCookie() {
             const cookies = document.cookie.split(';');
@@ -509,23 +512,36 @@
 
             if (userChannels.length === 0) {
                 channelList.innerHTML = '<li style="padding: 15px; color: #8e9297; font-size: 13px;">No channels yet</li>';
-                return;
+            } else {
+                userChannels.forEach(channel => {
+                    const li = document.createElement('li');
+                    li.className = 'channel-item';
+                    if (currentChannel === channel) {
+                        li.classList.add('active');
+                    }
+
+                    li.innerHTML = `
+                        <span class="channel-name" onclick="switchChannel('${channel}')">
+                            <span class="channel-hash">#</span>
+                            <span>${channel}</span>
+                        </span>
+                        <button class="leave-channel-btn" onclick="leaveChannel('${channel}', event)">Leave</button>
+                    `;
+                    channelList.appendChild(li);
+                });
             }
 
-            userChannels.forEach(channel => {
+            // DM partners as pseudo-channels prefixed with @
+            dmPartners.forEach(user => {
+                const dmName = '@' + user;
                 const li = document.createElement('li');
                 li.className = 'channel-item';
-                if (currentChannel === channel) {
-                    li.classList.add('active');
-                }
-
+                if (currentChannel === dmName) li.classList.add('active');
                 li.innerHTML = `
-                    <span class="channel-name" onclick="switchChannel('${channel}')">
-                        <span class="channel-hash">#</span>
-                        <span>${channel}</span>
-                    </span>
-                    <button class="leave-channel-btn" onclick="leaveChannel('${channel}', event)">Leave</button>
-                `;
+                    <span class="channel-name" onclick="switchChannel('${dmName}')">
+                        <span class="channel-hash">@</span>
+                        <span>${user}</span>
+                    </span>`;
                 channelList.appendChild(li);
             });
         }
@@ -534,13 +550,22 @@
             if (currentChannel === channelName) return;
 
             currentChannel = channelName;
-            document.getElementById('chatHeader').textContent = '# ' + channelName;
+            if (channelName.startsWith('@')) {
+                document.getElementById('chatHeader').textContent = '@ ' + channelName.substring(1);
+            } else {
+                document.getElementById('chatHeader').textContent = '# ' + channelName;
+            }
             document.getElementById('messageInput').disabled = false;
             document.getElementById('sendButton').disabled = false;
 
             displayChannels();
             loadMessages();
             loadChannelUsers();
+
+            // Auto-start P2P node for group channels only
+            if (!currentChannel.startsWith('@')) {
+                startP2P();
+            }
 
             // Clear old intervals
             if (messagePollingInterval) clearInterval(messagePollingInterval);
@@ -652,6 +677,7 @@
                         userCount.textContent = users.length;
                         userList.innerHTML = '';
 
+                        const others = [];
                         users.forEach(user => {
                             const li = document.createElement('li');
                             li.className = 'user-item';
@@ -659,11 +685,31 @@
                                 li.classList.add('current-user');
                             }
 
+                            let actionBtn = '';
+                            if (user.username !== currentUsername) {
+                                actionBtn = `<button style="margin-left:auto" onclick="requestP2P('${user.username}')">Connect</button>`;
+                            }
+
                             li.innerHTML = `
                                 <span class="user-status"></span>
                                 <span class="user-name">${user.username}${user.username === currentUsername ? ' (You)' : ''}</span>
+                                ${actionBtn}
                             `;
                             userList.appendChild(li);
+                            if (user.username !== currentUsername) others.push(user.username);
+                        });
+
+                        // Update DM partners based on active dm-status
+                        Promise.all(others.map(u => fetch('/p2p/dm-status', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username: currentUsername, peer: u })
+                        }).then(r => r.json()).then(d => ({ u, active: d.active }))
+                        .catch(() => ({ u, active: false }))))
+                        .then(results => {
+                            const set = new Set(dmPartners);
+                            results.forEach(({u, active}) => { if (active) set.add(u); });
+                            dmPartners = Array.from(set);
+                            displayChannels();
                         });
                     }
                 })
@@ -675,39 +721,60 @@
             const message = input.value.trim();
 
             if (!message || !currentUsername || !currentChannel) return;
-
-            await fetch('/chat/send-message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: currentUsername,
-                    message: message,
-                    channel: currentChannel
-                })
-            })
-                .then(response => {
-                    if (response.status === 200) {
-                        input.value = '';
-                        loadMessages();
-                    } else {
-                        alert('Failed to send message');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Failed to send message');
-                });
+            // DM uses direct P2P; Channels prefer P2P broadcast
+            try {
+                if (currentChannel.startsWith('@')) {
+                    const peer = currentChannel.substring(1);
+                    const resp = await fetch('/p2p/send-direct', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: currentUsername, peer, channel: currentChannel, message })
+                    });
+                    if (resp.status !== 200) throw new Error('Direct send failed');
+                } else if (p2pEnabled) {
+                    const resp = await fetch('/p2p/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username: currentUsername,
+                            channel: currentChannel,
+                            message: message
+                        })
+                    });
+                    if (resp.status !== 200) throw new Error('P2P send failed');
+                } else {
+                    const resp = await fetch('/chat/send-message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username: currentUsername,
+                            message: message,
+                            channel: currentChannel
+                        })
+                    });
+                    if (resp.status !== 200) throw new Error('Server send failed');
+                }
+                input.value = '';
+                loadMessages();
+            } catch (e) {
+                console.error('Send error:', e);
+                alert('Failed to send message');
+            }
         }
 
         async function loadMessages() {
             if (!currentChannel) return;
 
+            // Map @peer to dm:sorted(a|b)
+            let queryChannel = currentChannel;
+            if (currentChannel.startsWith('@')) {
+                const peer = currentChannel.substring(1);
+                queryChannel = computeDmKey(currentUsername, peer);
+            }
+
             await fetch('/chat/load-messages',{
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    channel: currentChannel
-                })
+                body: JSON.stringify({ channel: queryChannel })
             })
                 .then(response => response.json())
                 .then(data => {
@@ -748,6 +815,101 @@
         });
 
         window.addEventListener('DOMContentLoaded', initChat);
+
+        async function startP2P() {
+            if (!currentUsername || !currentChannel) return;
+            try {
+                const resp = await fetch('/p2p/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUsername, channel: currentChannel })
+                });
+                if (resp.ok) {
+                    p2pEnabled = true;
+                    document.getElementById('status').textContent = '✓ P2P Enabled';
+                    // Start polling for P2P requests
+                    setInterval(pollP2PRequests, 3000);
+                }
+            } catch (e) {
+                console.warn('P2P start failed:', e);
+                p2pEnabled = false;
+            }
+        }
+
+        async function requestP2P(target) {
+            if (!p2pEnabled) await startP2P();
+            try {
+                const resp = await fetch('/p2p/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUsername, channel: currentChannel, target })
+                });
+                if (!resp.ok) alert('Failed to send connect request');
+                else alert('Connect request sent to ' + target);
+            } catch (e) {
+                console.error('P2P request error:', e);
+            }
+        }
+
+        async function pollP2PRequests() {
+            try {
+                const resp = await fetch('/p2p/pending', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUsername })
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    pendingRequests = data.requests || [];
+                    renderP2PRequests();
+                }
+            } catch (e) {
+                console.error('P2P pending error:', e);
+            }
+        }
+
+        async function acceptP2P(requester) {
+            try {
+                const resp = await fetch('/p2p/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUsername, requester, channel: currentChannel })
+                });
+                if (resp.ok) {
+                    // Track DM partner and refresh channel list
+                    if (!dmPartners.includes(requester)) dmPartners.push(requester);
+                    displayChannels();
+                    switchChannel('@' + requester);
+                } else {
+                    alert('Failed to accept request');
+                }
+            } catch (e) {
+                console.error('P2P accept error:', e);
+            }
+        }
+
+        function renderP2PRequests() {
+            const userList = document.getElementById('userList');
+            if (!userList) return;
+            // Append requests at the bottom as items
+            // First remove old request items
+            const old = Array.from(userList.querySelectorAll('li.p2p-request'));
+            old.forEach(el => el.remove());
+            pendingRequests.forEach(u => {
+                const li = document.createElement('li');
+                li.className = 'user-item p2p-request';
+                li.innerHTML = `<span class="user-status" style="background:#ffc107"></span>
+                                <span class="user-name">Connect request from ${u}</span>
+                                <button style="margin-left:auto" onclick="acceptP2P('${u}')">Accept</button>`;
+                userList.appendChild(li);
+            });
+        }
+
+        function computeDmKey(a, b) {
+            const [x, y] = [a, b].sort();
+            return 'dm:' + x + '|' + y;
+        }
     </script>
 </body>
 

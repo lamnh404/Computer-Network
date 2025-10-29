@@ -120,6 +120,7 @@ class HttpAdapter:
                     if isinstance(hook_result, tuple) and len(hook_result) == 3:
                         # Handler returned (status_code, headers, body)
                         status_code, custom_headers, body = hook_result
+                        # print body
                         resp.status_code = status_code
 
                         # Set body attribute (this tells response.py to use dynamic content)

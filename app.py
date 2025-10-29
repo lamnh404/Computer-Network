@@ -197,6 +197,11 @@ def chat_register(req):
     """Register a user as active in the chat."""
     try:
         body= req.body if hasattr(req, 'body') else ""
+        if not body:
+            return (400, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Missing request body"
+            }))
         data = json.loads(body)
         if not data or 'username' not in data:
             return (400, {'Content-Type': 'application/json'}, json.dumps({
@@ -221,6 +226,11 @@ def chat_heartbeat(req):
     """Update status of users"""
     try:
         body = req.body if hasattr(req, 'body') else ""
+        if not body:
+            return (400, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Empty request body"
+            }))
         data = json.loads(body)
         if not data or 'username' not in data:
             return (400, {'Content-Type': 'application/json'}, json.dumps({
@@ -242,28 +252,123 @@ def chat_heartbeat(req):
             "message": "Internal server error"
         })
 
-@app.route('/chat/active-users', methods=['GET'])
-def get_active_users(req):
-    """Get list of active users."""
+@app.route('/chat/join-channel', methods=['POST'])
+def join_channel(req):
+    """Handle joining a channel."""
     try:
-        db.cleanup_inactive_users(timeout_seconds= 60)
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body)
+        if not data or 'username' not in data or 'channel' not in data :
+            return (400, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Missing username or channel"
+            }))
+        username = data.get('username')
+        channel = data.get('channel')
+        print(f"[P2PChat] User {username} joining channel {channel}")
+        if db.add_user_to_channel(username, channel):
+            print(f"[P2PChat] ✓ User {username} joined channel: {channel}")
+            response= {"status": "success", "message": "Joined channel"}
+            return 200, {'Content-Type': 'application/json'}, json.dumps(response)
+        else:
+            print(f"[P2PChat] ✗ Failed to add user {username} to channel: {channel}")
+            return 500, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Failed to join channel"
+            })
+    except Exception as e:
+        print(f"[P2PChat] ✗ Exception during join channel: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({
+            "status": "error",
+            "message": "Internal server error"
+        })
+@app.route('/chat/leave-channel',methods=['POST'])
+def leave_channel(req):
+    """Handle leaving a channel."""
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        data = json.loads(body)
+        if not data or 'username' not in data or 'channel' not in data :
+            return (400, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Missing username or channel"
+            }))
+        username = data.get('username')
+        channel = data.get('channel')
+        print(f"[P2PChat] User {username} leaving channel {channel}")
+        if db.remove_user_from_channel(username, channel):
+            print(f"[P2PChat] ✓ User {username} left channel: {channel}")
+            response= {"status": "success", "message": "Left channel"}
+            return 200, {'Content-Type': 'application/json'}, json.dumps(response)
+        else:
+            print(f"[P2PChat] ✗ Failed to remove user {username} from channel: {channel}")
+            return 500, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Failed to leave channel"
+            })
+    except Exception as e:
+        print(f"[P2PChat] ✗ Exception during leave channel: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({
+            "status": "error",
+            "message": "Internal server error"
+        })
+@app.route('/chat/user-channels', methods=['POST'])
+def get_user_channels(req):
+    """Get list of channels a user has joined."""
 
-        active_users = db.get_active_users(timeout_seconds=60)
-
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        print(f"[P2PChat] Get user channels attempt")
+        data = json.loads(body)
+        if not data or 'username' not in data:
+            return (400, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Missing username"
+            }))
+        username = data.get('username')
+        channels = db.get_user_channels(username)
+        print(f"[P2PChat] ✓ Retrieved channels for user: {username}")
+        print(f"[P2PChat] Channels: {channels}")
         response = {
             "status": "success",
-            "active_users": active_users
+            "channels": channels
         }
         return 200, {'Content-Type': 'application/json'}, json.dumps(response)
-
     except Exception as e:
-
-        print(f"[P2PChat] ✗ Exception getting active users: {e}")
+        print(f"[P2PChat] ✗ Exception getting user channels: {e}")
         return 500, {'Content-Type': 'application/json'}, json.dumps({
             "status": "error",
             "message": "Internal server error"
         })
 
+@app.route('/chat/channel-users', methods=['POST'])
+def get_channel_users(req):
+    """Get list of users in a specific channel."""
+    try:
+        body = req.body if hasattr(req, 'body') else ""
+        print(f"[P2PChat] Get channel users attempt")
+        data = json.loads(body)
+        if not data or 'channel' not in data:
+            return (400, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Missing channel"
+            }))
+        channel = data.get('channel')
+        users = db.get_channel_users(channel)
+        users= list(map(lambda x: {'username': x}, users))
+        print(f"[P2PChat] ✓ Retrieved users for channel: {channel}")
+        print(f"[P2PChat] Users: {users}")
+        response = {
+            "status": "success",
+            "users": users
+        }
+        return 200, {'Content-Type': 'application/json'}, json.dumps(response)
+    except Exception as e:
+        print(f"[P2PChat] ✗ Exception getting channel users: {e}")
+        return 500, {'Content-Type': 'application/json'}, json.dumps({
+            "status": "error",
+            "message": "Internal server error"
+        })
 @app.route('/chat/send-message', methods=['POST'])
 def send_message(req):
     """Handle sending a message to a channel."""
@@ -279,6 +384,7 @@ def send_message(req):
         username = data.get('username')
         content = data.get('message')
         channel = data.get('channel', 'general')
+        print(f"[P2PChat] Message from {username} to channel {channel}: {content}")
         if db.save_message(username, content, channel):
             print(f"[P2PChat] ✓ Message saved from user: {username} in channel: {channel}")
             response= {"status": "success", "message": "Message sent"}
@@ -296,14 +402,21 @@ def send_message(req):
             "message": "Internal server error"
         })
 
-@app.route('/chat/load-messages', methods=['GET'])
+@app.route('/chat/load-messages', methods=['POST'])
 def load_messages(req):
     """Load messages for a specific channel."""
     try:
-        channel = req.query_params.get('channel', 'general') if hasattr(req, 'query_params') else 'general'
-
-        messages = db.load_messages()
-
+        body = req.body if hasattr(req, 'body') else ""
+        print(f"[P2PChat] Load messages attempt")
+        data = json.loads(body)
+        if not data or 'channel' not in data:
+            return (400, {'Content-Type': 'application/json'}, json.dumps({
+                "status": "error",
+                "message": "Missing channel"
+            }))
+        channel = data.get('channel')
+        messages = db.load_messages(channel, 100)
+        print(f"[P2PChat] ✓ Retrieved messages for channel: {channel}")
         response = {
             "status": "success",
             "messages": messages
@@ -316,8 +429,6 @@ def load_messages(req):
             "status": "error",
             "message": "Internal server error"
         })
-
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

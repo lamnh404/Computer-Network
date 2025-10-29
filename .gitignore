@@ -7,3 +7,5 @@ __pycache__
 .env
 .env.*
 
+/db/p2p_chat.db
+

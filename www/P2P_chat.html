@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weaprous Chat</title>
+    <title>Weaprous Chat - Multi Channel</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -14,7 +14,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -22,6 +22,7 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            height: 90vh;
         }
 
         .header {
@@ -36,26 +37,135 @@
             font-size: 24px;
         }
 
+        .user-info {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status {
+            color: #28a745;
+            font-weight: bold;
+        }
+
         .main-content {
             display: flex;
             flex: 1;
+            overflow: hidden;
         }
 
-        .sidebar {
-            width: 250px;
+        .channels-sidebar {
+            width: 220px;
+            background: #2c2f33;
+            color: #dcddde;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .channels-header {
+            padding: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #202225;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .add-channel-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .add-channel-btn:hover {
+            background: #5a6fd8;
+        }
+
+        .channel-list {
+            list-style: none;
+            padding: 10px;
+            margin: 0;
+        }
+
+        .channel-item {
+            padding: 10px 15px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .channel-item:hover {
+            background: #36393f;
+        }
+
+        .channel-item.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .channel-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .channel-hash {
+            font-weight: bold;
+            color: #8e9297;
+        }
+
+        .channel-item.active .channel-hash {
+            color: white;
+        }
+
+        .leave-channel-btn {
+            background: transparent;
+            border: none;
+            color: #ed4245;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .channel-item:hover .leave-channel-btn {
+            opacity: 1;
+        }
+
+        .leave-channel-btn:hover {
+            background: #ed4245;
+            color: white;
+        }
+
+        .users-sidebar {
+            width: 200px;
             background: #f8f9fa;
-            border-right: 1px solid #dee2e6;
+            border-left: 1px solid #dee2e6;
             padding: 20px;
             overflow-y: auto;
-            max-height: 500px;
         }
 
-        .sidebar h3 {
+        .users-sidebar h3 {
             margin: 0 0 15px 0;
-            font-size: 16px;
+            font-size: 14px;
             color: #495057;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
+            text-transform: uppercase;
+            font-weight: 600;
         }
 
         .user-list {
@@ -65,20 +175,14 @@
         }
 
         .user-item {
-            padding: 10px;
-            margin-bottom: 8px;
+            padding: 8px 10px;
+            margin-bottom: 5px;
             background: white;
-            border-radius: 6px;
+            border-radius: 4px;
             display: flex;
             align-items: center;
             border: 1px solid #e9ecef;
-            transition: all 0.2s;
-        }
-
-        .user-item:hover {
-            background: #e7f1ff;
-            border-color: #667eea;
-            transform: translateX(5px);
+            font-size: 13px;
         }
 
         .user-item.current-user {
@@ -91,44 +195,33 @@
             height: 8px;
             border-radius: 50%;
             background: #28a745;
-            margin-right: 10px;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        .user-name {
-            font-size: 14px;
-            color: #495057;
-            font-weight: 500;
+            margin-right: 8px;
         }
 
         .chat-container {
             flex: 1;
             display: flex;
             flex-direction: column;
+            background: white;
+        }
+
+        .chat-header {
+            padding: 15px 20px;
+            border-bottom: 2px solid #eee;
+            font-weight: 600;
+            color: #495057;
+            font-size: 16px;
         }
 
         .chat-area {
-            height: 400px;
+            flex: 1;
             overflow-y: auto;
             padding: 20px;
-            border-bottom: 1px solid #eee;
         }
 
         .message {
             margin-bottom: 15px;
-            padding: 10px;
+            padding: 10px 15px;
             border-radius: 8px;
             background: #f8f9fa;
         }
@@ -139,10 +232,18 @@
             margin-bottom: 5px;
         }
 
+        .system-message {
+            background: #e7f3ff;
+            color: #004085;
+            text-align: center;
+            font-style: italic;
+        }
+
         .input-area {
             padding: 20px;
             display: flex;
             gap: 10px;
+            border-top: 1px solid #eee;
         }
 
         .message-input {
@@ -167,34 +268,92 @@
             background: #5a6fd8;
         }
 
-        .user-info {
-            padding: 15px 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #eee;
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .modal-content h2 {
+            margin: 0 0 20px 0;
+            color: #495057;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
             font-size: 14px;
         }
 
-        .status {
-            color: #28a745;
-            font-weight: bold;
+        .modal-btn-primary {
+            background: #667eea;
+            color: white;
         }
 
-        /* Responsive design */
+        .modal-btn-primary:hover {
+            background: #5a6fd8;
+        }
+
+        .modal-btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .modal-btn-secondary:hover {
+            background: #5a6268;
+        }
+
         @media (max-width: 768px) {
             .main-content {
                 flex-direction: column;
             }
 
-            .sidebar {
+            .channels-sidebar,
+            .users-sidebar {
                 width: 100%;
-                max-height: 200px;
-                border-right: none;
-                border-bottom: 1px solid #dee2e6;
+                max-height: 150px;
             }
 
             .container {
-                max-width: 100%;
-                margin: 10px;
+                height: auto;
+                min-height: 90vh;
             }
         }
     </style>
@@ -203,7 +362,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Weaprous Chat Application</h1>
+            <h1>Weaprous Chat - Multi Channel</h1>
         </div>
 
         <div class="user-info">
@@ -212,38 +371,72 @@
         </div>
 
         <div class="main-content">
-            <!-- Sidebar for active users -->
-            <div class="sidebar">
-                <h3>Active Users (<span id="userCount">0</span>)</h3>
-                <ul class="user-list" id="userList">
-                    <li class="user-item">
-                        <span class="user-status"></span>
-                        <span class="user-name">Loading...</span>
+            <!-- Channels Sidebar -->
+            <div class="channels-sidebar">
+                <div class="channels-header">
+                    <span>CHANNELS</span>
+                    <button class="add-channel-btn" onclick="showJoinChannelModal()">+ Join</button>
+                </div>
+                <ul class="channel-list" id="channelList">
+                    <li class="channel-item">
+                        <span class="channel-name">Loading...</span>
                     </li>
                 </ul>
             </div>
 
-            <!-- Chat area -->
+            <!-- Chat Area -->
             <div class="chat-container">
+                <div class="chat-header" id="chatHeader">
+                    Select a channel
+                </div>
+
                 <div class="chat-area" id="chatArea">
-                    <div class="message">
-                        <strong>Welcome to Simple Chat!</strong>
-                        Loading your chat...
+                    <div class="message system-message">
+                        <strong>Welcome to Weaprous Chat!</strong>
+                        Join or create a channel to start chatting.
                     </div>
                 </div>
 
                 <div class="input-area">
-                    <input type="text" id="messageInput" class="message-input" placeholder="Type your message...">
-                    <button onclick="sendMessage()" class="send-button" id="sendButton">Send</button>
+                    <input type="text" id="messageInput" class="message-input"
+                           placeholder="Type your message..." disabled>
+                    <button onclick="sendMessage()" class="send-button" id="sendButton" disabled>Send</button>
                 </div>
+            </div>
+
+            <!-- Users Sidebar -->
+            <div class="users-sidebar">
+                <h3>Members (<span id="userCount">0</span>)</h3>
+                <ul class="user-list" id="userList">
+                    <li class="user-item">
+                        <span class="user-status"></span>
+                        <span class="user-name">No channel selected</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Channel Modal -->
+    <div class="modal" id="joinChannelModal">
+        <div class="modal-content">
+            <h2>Join or Create Channel</h2>
+            <input type="text" id="channelNameInput" class="modal-input"
+                   placeholder="Enter channel name...">
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="hideJoinChannelModal()">Cancel</button>
+                <button class="modal-btn modal-btn-primary" onclick="joinChannel()">Join</button>
             </div>
         </div>
     </div>
 
     <script>
         let currentUsername = '';
+        let currentChannel = null;
+        let userChannels = [];
+        let messagePollingInterval = null;
+        let usersPollingInterval = null;
 
-        // Get username from cookie
         function getUsernameFromCookie() {
             const cookies = document.cookie.split(';');
             for (let cookie of cookies) {
@@ -255,8 +448,7 @@
             return null;
         }
 
-        // Initialize on page load
-        function initChat() {
+        async function initChat() {
             const username = getUsernameFromCookie();
 
             if (!username) {
@@ -268,85 +460,201 @@
             currentUsername = username;
             document.getElementById('userInfo').textContent = 'Logged in as: ' + username;
 
-            // Mark user as active immediately
-            markUserActive();
-
-            // Register user in chat (if not already registered)
-            fetch('/chat/register', {
+            // Register user
+            await fetch('/chat/register', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: currentUsername })
+            }).catch(e => console.error('Registration error:', e));
+
+            // Load user's channels
+            await loadUserChannels();
+
+            // Start heartbeat
+            setInterval(async () => {
+                if (currentUsername.length > 0) {
+                    await fetch('/chat/heartbeat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: currentUsername })
+                    }).catch(e => console.error('Heartbeat error:', e));
+                }
+            }, 10000);
+        }
+
+        async function loadUserChannels() {
+            await fetch('/chat/user-channels', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: currentUsername})
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        userChannels = data.channels || [];
+                        displayChannels();
+
+                        // Auto-select first channel if available
+                        if (userChannels.length > 0 && !currentChannel) {
+                            switchChannel(userChannels[0]);
+                        }
+                    }
+                })
+                .catch(error => console.error('Error loading channels:', error));
+        }
+
+        function displayChannels() {
+            const channelList = document.getElementById('channelList');
+            channelList.innerHTML = '';
+
+            if (userChannels.length === 0) {
+                channelList.innerHTML = '<li style="padding: 15px; color: #8e9297; font-size: 13px;">No channels yet</li>';
+                return;
+            }
+
+            userChannels.forEach(channel => {
+                const li = document.createElement('li');
+                li.className = 'channel-item';
+                if (currentChannel === channel) {
+                    li.classList.add('active');
+                }
+
+                li.innerHTML = `
+                    <span class="channel-name" onclick="switchChannel('${channel}')">
+                        <span class="channel-hash">#</span>
+                        <span>${channel}</span>
+                    </span>
+                    <button class="leave-channel-btn" onclick="leaveChannel('${channel}', event)">Leave</button>
+                `;
+                channelList.appendChild(li);
+            });
+        }
+
+        function switchChannel(channelName) {
+            if (currentChannel === channelName) return;
+
+            currentChannel = channelName;
+            document.getElementById('chatHeader').textContent = '# ' + channelName;
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendButton').disabled = false;
+
+            displayChannels();
+            loadMessages();
+            loadChannelUsers();
+
+            // Clear old intervals
+            if (messagePollingInterval) clearInterval(messagePollingInterval);
+            if (usersPollingInterval) clearInterval(usersPollingInterval);
+
+            // Start new intervals
+            messagePollingInterval = setInterval(loadMessages, 3000);
+            usersPollingInterval = setInterval(loadChannelUsers, 5000);
+        }
+
+        function showJoinChannelModal() {
+            document.getElementById('joinChannelModal').classList.add('active');
+            document.getElementById('channelNameInput').focus();
+        }
+
+        function hideJoinChannelModal() {
+            document.getElementById('joinChannelModal').classList.remove('active');
+            document.getElementById('channelNameInput').value = '';
+        }
+
+        async function joinChannel() {
+            const channelName = document.getElementById('channelNameInput').value.trim();
+
+            if (!channelName) {
+                alert('Please enter a channel name');
+                return;
+            }
+
+            await fetch('/chat/join-channel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    username: username
+                    username: currentUsername,
+                    channel: channelName
                 })
             })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.status === 'success' || data.code === 409) {
-                        // Success or already exists - both are fine
-                        document.getElementById('chatArea').innerHTML = '<div class="message"><strong>System:</strong> Welcome ' + username + '!</div>';
-
-                        // Start polling for messages and users
-                        loadMessages();
-                        loadActiveUsers();
-                        setInterval(loadMessages, 3000); // Poll every 3 seconds
-                        setInterval(loadActiveUsers, 5000); // Poll every 5 seconds
-                        setInterval(markUserActive, 10000); // Send heartbeat every 10 seconds
+                    if (data.status === 'success') {
+                        hideJoinChannelModal();
+                        loadUserChannels();
+                        switchChannel(channelName);
                     } else {
-                        alert('Chat registration failed: ' + data.message);
+                        alert('Failed to join channel: ' + data.message);
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    // Continue anyway, just load messages
-                    loadMessages();
-                    loadActiveUsers();
-                    setInterval(loadMessages, 3000);
-                    setInterval(loadActiveUsers, 5000);
-                    setInterval(markUserActive, 10000);
+                    alert('Failed to join channel');
                 });
         }
 
-        // Send heartbeat to mark user as active
-        function markUserActive() {
-            if (!currentUsername) return;
+        async function leaveChannel(channelName, event) {
+            event.stopPropagation();
 
-            fetch('/chat/heartbeat', {
+            if (!confirm('Are you sure you want to leave #' + channelName + '?')) {
+                return;
+            }
+
+            await fetch('/chat/leave-channel', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    username: currentUsername
+                    username: currentUsername,
+                    channel: channelName
                 })
             })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        if (currentChannel === channelName) {
+                            currentChannel = null;
+                            document.getElementById('chatHeader').textContent = 'Select a channel';
+                            document.getElementById('chatArea').innerHTML =
+                                '<div class="message system-message">Channel left. Select another channel to continue chatting.</div>';
+                            document.getElementById('messageInput').disabled = true;
+                            document.getElementById('sendButton').disabled = true;
+                            document.getElementById('userList').innerHTML =
+                                '<li class="user-item"><span class="user-name">No channel selected</span></li>';
+                        }
+                        loadUserChannels();
+                    } else {
+                        alert('Failed to leave channel: ' + data.message);
+                    }
+                })
                 .catch(error => {
-                    console.error('Error sending heartbeat:', error);
+                    console.error('Error:', error);
+                    alert('Failed to leave channel');
                 });
         }
 
-        // Load active users
-        function loadActiveUsers() {
-            fetch('/chat/active-users')
+        async function loadChannelUsers() {
+            if (!currentChannel) return;
+
+            await fetch('/chat/channel-users',{
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    channel: currentChannel
+                })
+            })
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
                         const userList = document.getElementById('userList');
                         const userCount = document.getElementById('userCount');
-                        const users = data.active_users;
+                        const users = data.users || [];
 
                         userCount.textContent = users.length;
-
-                        // Clear existing list
                         userList.innerHTML = '';
 
-                        // Display users
                         users.forEach(user => {
                             const li = document.createElement('li');
                             li.className = 'user-item';
-
-                            // Highlight current user
                             if (user.username === currentUsername) {
                                 li.classList.add('current-user');
                             }
@@ -359,38 +667,30 @@
                         });
                     }
                 })
-                .catch(error => {
-                    console.error('Error loading users:', error);
-                });
+                .catch(error => console.error('Error loading users:', error));
         }
 
-        // Send message
-        function sendMessage() {
+        async function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
 
-            if (!message || !currentUsername) {
-                return;
-            }
+            if (!message || !currentUsername || !currentChannel) return;
 
-
-            fetch('/chat/send-message', {
+            await fetch('/chat/send-message', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     username: currentUsername,
-                    message: message
+                    message: message,
+                    channel: currentChannel
                 })
             })
                 .then(response => {
                     if (response.status === 200) {
                         input.value = '';
-                        // Immediately load new messages
                         loadMessages();
                     } else {
-                        alert('Failed to send message: ' + response.message);
+                        alert('Failed to send message');
                     }
                 })
                 .catch(error => {
@@ -399,19 +699,29 @@
                 });
         }
 
-        // Load messages
-        function loadMessages() {
-            fetch('/chat/load-messages')
+        async function loadMessages() {
+            if (!currentChannel) return;
+
+            await fetch('/chat/load-messages',{
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    channel: currentChannel
+                })
+            })
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
                         const chatArea = document.getElementById('chatArea');
-                        const messages = data.messages;
+                        const messages = data.messages || [];
 
-                        // Clear existing messages
                         chatArea.innerHTML = '';
 
-                        // Display messages in chronological order (oldest first, newest at bottom)
+                        if (messages.length === 0) {
+                            chatArea.innerHTML = '<div class="message system-message">No messages yet. Start the conversation!</div>';
+                            return;
+                        }
+
                         messages.forEach(msg => {
                             const messageDiv = document.createElement('div');
                             messageDiv.className = 'message';
@@ -419,23 +729,24 @@
                             chatArea.appendChild(messageDiv);
                         });
 
-                        // Scroll to bottom
                         chatArea.scrollTop = chatArea.scrollHeight;
                     }
                 })
-                .catch(error => {
-                    console.error('Error loading messages:', error);
-                });
+                .catch(error => console.error('Error loading messages:', error));
         }
 
-        // Handle Enter key for message input
         document.getElementById('messageInput').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 sendMessage();
             }
         });
 
-        // Initialize chat when page loads
+        document.getElementById('channelNameInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                joinChannel();
+            }
+        });
+
         window.addEventListener('DOMContentLoaded', initChat);
     </script>
 </body>

@@ -184,7 +184,6 @@ class Response():
             # Build and return response
             self._header = self.build_response_header(request)
 
-
             return self._header + self._content
 
         # Otherwise, fall back to file-based serving (original behavior)

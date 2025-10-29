@@ -113,11 +113,22 @@ def init_db():
                        )
                            )
                        ''')
+        # Create users and channel that they joined
+        cursor.execute('''
+                       CREATE TABLE IF NOT EXISTS user_channels
+                       (
+                           username TEXT,
+                           channel_name TEXT,
+                           joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (username) REFERENCES users (username),
+                            FOREIGN KEY (channel_name) REFERENCES messages (channel),
+                           PRIMARY KEY (username, channel_name)
+                       )
+                       ''')
 
         conn.commit()
         print("[DB] Database initialized successfully")
         return True
-
 
 def save_message(username, msg, channel='general'):
     """
@@ -266,6 +277,54 @@ def mark_user_active(username):
         print("[DB] Error marking user active: {}".format(e))
         return False
 
+def add_user_to_channel(username, channel_name):
+    """
+    Add a user to a channel.
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                           INSERT OR IGNORE INTO user_channels (username, channel_name)
+                           VALUES (?, ?)
+                           ''', (username, channel_name))
+            conn.commit()
+            return True
+    except Exception as e:
+        print("[DB] Error adding user to channel: {}".format(e))
+        return False
+def remove_user_from_channel(username, channel_name):
+    """
+    Remove a user from a channel.
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                           DELETE FROM user_channels
+                           WHERE username = ? AND channel_name = ?
+                           ''', (username, channel_name))
+            conn.commit()
+            return True
+    except Exception as e:
+        print("[DB] Error removing user from channel: {}".format(e))
+        return False
+def get_user_channels(username):
+    """
+    Get list of channels a user has joined.
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                           SELECT channel_name
+                           FROM user_channels
+                           WHERE username = ?
+                           ''', (username,))
+            return [row['channel_name'] for row in cursor.fetchall()]
+    except Exception as e:
+        print("[DB] Error getting user channels: {}".format(e))
+        return []
 
 def remove_user_active(username):
     """
@@ -281,6 +340,22 @@ def remove_user_active(username):
         print("[DB] Error removing active user: {}".format(e))
         return False
 
+def get_channel_users(channel_name):
+    """
+    Get list of users in a specific channel.
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                           SELECT username
+                           FROM user_channels
+                           WHERE channel_name = ?
+                           ''', (channel_name,))
+            return [row['username'] for row in cursor.fetchall()]
+    except Exception as e:
+        print("[DB] Error getting channel users: {}".format(e))
+        return []
 
 def get_active_users(timeout_seconds=60):
     """
